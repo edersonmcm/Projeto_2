@@ -1,0 +1,228 @@
+---
+title: "TÍTULO DO TRABALHO"
+author: "Autor do Trabalho"
+format:
+  dashboard:
+     theme: 
+      - sketchy
+      - olympicdash.scss
+     orientation: columns
+     expandable: True
+     scrolling: False
+     nav-buttons:
+      - icon: instagram
+        href: https://instagram.com
+      - icon: envelope
+        href: mailto:guilhermev@id.uff.br
+      - icon: github
+        href: https://github.com/GuilhermeGETUFF
+server: shiny
+---
+
+```{r}
+#| context: setup
+# O comando context: setup é importantíssimo para que
+# todos os pacotes funcionem perfeitamente no código todo
+library(ggplot2)
+library(shiny)
+```
+
+# **ABA 1**
+
+## Coluna1 {width="50%"}
+
+### Linha1 {height="50%"}
+
+```{r}
+#| title: Texto Explicativo
+#| results: asis
+
+cat("
+
+Aqui vai o texto grande que você quer mostrar. Pode ser várias linhas, com **negrito**, *itálico*, listas:
+
+- Item 1
+- Item 2
+- Item 3
+
+E até [links](https://exemplo.com) se precisar.
+
+Você pode colocar imagens também:
+
+![](images/Rstudio.png)
+
+")
+
+```
+
+### Linha2 {height="50%"}
+
+```{r}
+#| title: Título do Gráfico
+#| fig-width: 4
+#| fig-height: 3
+ggplot(pressure, aes(temperature, pressure)) + geom_line()
+```
+
+## Coluna2 {width="50%"}
+
+### Linha1 {height="40%"}
+
+```{r}
+#| component: valuebox
+#| title: Hours since last earthquake
+x=5
+list(
+  icon = "stopwatch",
+  color = "primary",
+  value = x
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: Usuários Online Agora
+list(
+  value = 128,
+  icon = "people",
+  color = "blue"
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: Tentativas de Login Suspeitas
+list(
+value = 12,
+icon = "shield-exclamation",
+color = "red"
+)
+```
+
+### linha2 {.tabset height="60%"}
+
+```{r}
+#| title: Título SubGráfico 1
+#| fig-width: 4
+#| fig-height: 3
+ggplot(mtcars, aes(mpg)) + geom_density()
+```
+
+```{r}
+#| title: Título SubGráfico 2
+#| fig-width: 4
+#| fig-height: 3
+ggplot(mtcars, aes(factor(cyl), mpg)) + geom_boxplot()
+```
+
+
+
+# **ABA 2**
+
+## Coluna1 {.sidebar width="30%"}
+
+### ESCOLHA OS PARÂMETROS
+
+```{r}
+# input das barras
+sliderInput("barras",
+            "Número de Barras do Histograma:",
+            min = 1,
+            max = 50,
+            value = 30)
+
+# input da transparência
+sliderInput("alpha",
+            "Transparência da Densidade:",
+            min = 0,
+            max = 1,
+            value = 0.8,
+            step = 0.1)
+
+# input da cor do boxplot
+selectInput("corBox",
+            "Cor do Boxplot:",
+            choices = c("darkgray", "steelblue", "tomato", "forestgreen"),
+            selected = "darkgray")
+
+# input do tamanho do ponto
+numericInput("sizeponto",
+             "Tamanho do Ponto :",
+             value = 2,
+             min = 1, max = 5)
+```
+
+## Coluna2 {width="35%"}
+
+### Linha1 {height="50%"}
+
+```{r}
+#| title: Título Gráfico 1
+#| fig-width: 4
+#| fig-height: 3
+plotOutput("distPlot1")
+```
+
+### Linha2 {height="50%"}
+
+```{r}
+#| title: Título Gráfico 2
+#| fig-width: 4
+#| fig-height: 3
+plotOutput("distPlot2")
+```
+
+## Coluna2 {width="35%"}
+
+### Linha1 {height="50%"}
+
+```{r}
+#| title: Título Gráfico 3
+#| fig-width: 4
+#| fig-height: 3
+plotOutput("distPlot3")
+```
+
+### Linha2 {height="50%"}
+
+```{r}
+#| title: Título Gráfico 4
+#| fig-width: 4
+#| fig-height: 3
+plotOutput("distPlot4")
+```
+
+```{r}
+#| context: server
+
+# Histograma
+output$distPlot1 <- renderPlot({
+  ggplot(faithful, aes(x = waiting)) +
+    geom_histogram(
+      bins = input$barras) +
+    labs(x = "Waiting time (minutes)",
+      y = "Frequência") 
+})
+# Densidade
+output$distPlot2 <- renderPlot({
+  ggplot(faithful, aes(x = waiting)) +
+    geom_density(fill = "lightblue",
+                 alpha = input$alpha) +
+    labs(x = "Waiting time (minutes)",
+      y = "Densidade") 
+})
+# Boxplot
+output$distPlot3 <- renderPlot({
+  ggplot(faithful, aes(y = waiting)) +
+    geom_boxplot(fill = input$corBox) +
+    labs(title = "Boxplot",
+      y = "Waiting time (minutes)") 
+})
+# Dispersão
+output$distPlot4 <- renderPlot({
+  ggplot(faithful, aes(x = eruptions, y = waiting)) +
+    geom_point( size= input$sizeponto  ) +
+    labs(x = "Eruptions (minutes)",
+      y = "Waiting time (minutes)") 
+})
+```

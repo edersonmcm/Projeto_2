@@ -1,0 +1,740 @@
+---
+title: "Mortalidade por Câncer de Pâncreas no Brasil"
+author: "Ederson Macedo de Carvalho Moraes"
+
+format:
+  dashboard:
+    theme: sketchy
+    orientation: columns
+    expandable: true
+    scrolling: true
+
+server: shiny
+---
+
+```{r}
+#| context: setup
+
+library(shiny)
+library(tidyverse)
+library(readxl)
+
+base_Pancreas <- read_excel("MortalidadeCancer.xlsx") |>
+  filter(Cancer == "Câncer de Pancreas") |>
+  mutate(
+    taxa_100k = (n / populacao) * 100000
+  )
+
+total_obitos <- sum(base_Pancreas$n, na.rm = TRUE)
+
+pop_total <- sum(base_Pancreas$populacao, na.rm = TRUE)
+
+taxa_media <- mean(base_Pancreas$taxa_100k, na.rm = TRUE)
+
+n_locais <- n_distinct(base_Pancreas$local)
+
+
+```
+
+# Visão Geral
+
+## Coluna 1 {width="45%"}
+
+### Sobre o Dashboard
+
+```{r}
+#| results: asis
+
+cat("
+### Objetivo
+
+Este dashboard apresenta uma análise exploratória da mortalidade por câncer de pâncreas no Brasil.
+
+Os dados estão agregados por:
+
+- Ano
+- Sexo
+- Faixa etária
+- Município / Estado / Região
+
+Os indicadores principais são:
+
+- Número de óbitos
+- População
+- Taxa por 100 mil habitantes
+")
+```
+
+### Evolução Temporal dos Óbitos
+
+```{r}
+base_Pancreas |>
+  group_by(ano) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE)
+  ) |>
+  ggplot(
+    aes(
+      ano,
+      obitos
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  labs(
+    x = "Ano",
+    y = "Óbitos",
+    title = "Óbitos por Ano"
+  )
+```
+
+## Coluna 2 {width="55%"}
+
+### Indicadores
+
+```{r}
+#| component: valuebox
+#| title: Total de Óbitos
+
+list(
+  value = scales::comma(total_obitos),
+  icon = "heart-pulse",
+  color = "danger"
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: População Total
+
+list(
+  value = scales::comma(pop_total),
+  icon = "people",
+  color = "primary"
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: Taxa Média por 100 mil
+
+list(
+  value = round(taxa_media,2),
+  icon = "graph-up",
+  color = "warning"
+)
+```
+
+```{r}
+#| component: valuebox
+#| title: Locais Analisados
+
+list(
+  value = n_locais,
+  icon = "geo-alt",
+  color = "success"
+)
+```
+
+### Taxa por Ano
+
+```{r}
+base_Pancreas |>
+  group_by(ano) |>
+  summarise(
+    taxa =
+      sum(n, na.rm = TRUE) /
+      sum(populacao, na.rm = TRUE) *
+      100000
+  ) |>
+  ggplot(
+    aes(
+      ano,
+      taxa
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  labs(
+    x = "Ano",
+    y = "Taxa",
+    title = "Taxa de Mortalidade por 100 mil habitantes"
+  )
+```
+
+# Sexo e Faixa Etária
+
+## Sidebar {.sidebar}
+
+```{r}
+selectInput(
+  "sexo",
+  "Sexo",
+  choices = unique(base_Pancreas$sexo),
+  selected = unique(base_Pancreas$sexo)[1]
+)
+
+sliderInput(
+  "ano",
+  "Ano",
+  min = min(base_Pancreas$ano),
+  max = max(base_Pancreas$ano),
+  value = max(base_Pancreas$ano),
+  step = 1,
+  sep = ""
+)
+```
+
+## Coluna 1
+
+### Mortalidade por Faixa Etária
+
+```{r}
+plotOutput("graf_faixa")
+```
+
+## Coluna 2
+
+### Mortalidade por Local
+
+```{r}
+plotOutput("graf_local")
+```
+
+```{r}
+#| context: server
+
+dados_filtrados <- reactive({
+
+  base_Pancreas |>
+    filter(
+      sexo == input$sexo,
+      ano == input$ano
+    )
+
+})
+
+output$graf_faixa <- renderPlot({
+
+  dados_filtrados() |>
+    group_by(faixa) |>
+    summarise(
+      obitos = sum(n, na.rm = TRUE)
+    ) |>
+    ggplot(
+      aes(
+        reorder(faixa, obitos),
+        obitos
+      )
+    ) +
+    geom_col() +
+    coord_flip() +
+    labs(
+      x = "Faixa Etária",
+      y = "Óbitos"
+    )
+
+})
+
+output$graf_local <- renderPlot({
+
+  dados_filtrados() |>
+    group_by(local) |>
+    summarise(
+      obitos = sum(n, na.rm = TRUE)
+    ) |>
+    slice_max(
+      obitos,
+      n = 15
+    ) |>
+    ggplot(
+      aes(
+        reorder(local, obitos),
+        obitos
+      )
+    ) +
+    geom_col() +
+    coord_flip() +
+    labs(
+      x = "Local",
+      y = "Óbitos"
+    )
+
+})
+```
+
+
+# Perfil Demográfico
+
+## Coluna 1 {width="50%"}
+
+### Distribuição dos Óbitos por Sexo
+
+```{r}
+base_Pancreas |>
+  group_by(sexo) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE)
+  ) |>
+  ggplot(
+    aes(
+      reorder(sexo, obitos),
+      obitos,
+      fill = sexo
+    )
+  ) +
+  geom_col(show.legend = FALSE) +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "Óbitos",
+    title = "Óbitos por Sexo"
+  )
+```
+
+### Distribuição dos Óbitos por Faixa Etária
+
+```{r}
+base_Pancreas |>
+  group_by(faixa) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE)
+  ) |>
+  ggplot(
+    aes(
+      reorder(faixa, obitos),
+      obitos
+    )
+  ) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "Óbitos",
+    title = "Óbitos por Faixa Etária"
+  )
+```
+
+## Coluna 2 {width="50%"}
+
+### Sexo x Faixa Etária
+
+```{r}
+base_Pancreas |>
+  group_by(sexo, faixa) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  ggplot(
+    aes(
+      faixa,
+      sexo,
+      fill = obitos
+    )
+  ) +
+  geom_tile() +
+  labs(
+    x = "Faixa Etária",
+    y = "Sexo",
+    fill = "Óbitos",
+    title = "Mapa de Calor"
+  ) +
+  theme(
+    axis.text.x =
+      element_text(
+        angle = 45,
+        hjust = 1
+      )
+  )
+```
+
+### Interpretação
+
+```{r}
+#| results: asis
+
+cat("
+### Objetivo
+
+Identificar os grupos mais afetados pelo câncer de pâncreas.
+
+Aspectos observados:
+
+- diferenças entre homens e mulheres;
+- concentração em determinadas faixas etárias;
+- grupos de maior risco;
+- possíveis padrões epidemiológicos.
+")
+```
+
+# Tendências Temporais
+
+## Coluna 1 {width="50%"}
+
+### Evolução dos Óbitos por Sexo
+
+```{r}
+base_Pancreas |>
+  group_by(
+    ano,
+    sexo
+  ) |>
+  summarise(
+    obitos = sum(n),
+    .groups = "drop"
+  ) |>
+  ggplot(
+    aes(
+      ano,
+      obitos,
+      color = sexo
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  labs(
+    x = "Ano",
+    y = "Óbitos",
+    title = "Evolução Temporal por Sexo"
+  )
+```
+
+### Evolução da Taxa por Sexo
+
+```{r}
+base_Pancreas |>
+  group_by(
+    ano,
+    sexo
+  ) |>
+  summarise(
+    taxa =
+      sum(n) /
+      sum(populacao) *
+      100000,
+    .groups = "drop"
+  ) |>
+  ggplot(
+    aes(
+      ano,
+      taxa,
+      color = sexo
+    )
+  ) +
+  geom_line(linewidth = 1) +
+  geom_point() +
+  labs(
+    x = "Ano",
+    y = "Taxa por 100 mil",
+    title = "Taxa de Mortalidade"
+  )
+```
+
+## Coluna 2 {width="50%"}
+
+### Evolução por Faixa Etária
+
+```{r}
+base_Pancreas |>
+  mutate(
+    faixa_grupo = case_when(
+
+      faixa == "0-4 anos" ~
+        "Primeira infância",
+
+      faixa %in% c(
+        "5-9 anos",
+        "10-14 anos"
+      ) ~
+        "Crianças",
+
+      faixa == "15-19 anos" ~
+        "Adolescentes e jovens",
+
+      faixa %in% c(
+        "20-24 anos",
+        "25-29 anos",
+        "30-34 anos",
+        "35-39 anos",
+        "40-44 anos",
+        "45-49 anos",
+        "50-54 anos",
+        "55-59 anos"
+      ) ~
+        "Adultos",
+
+      faixa %in% c(
+        "60-64 anos",
+        "65-69 anos",
+        "70-74 anos",
+        "75-79 anos"
+      ) ~
+        "Idosos",
+
+      faixa == "80-mais" ~
+        "Muito idosos",
+
+      TRUE ~ NA_character_
+    )
+  ) |>
+  filter(!is.na(faixa_grupo)) |>
+  group_by(
+    ano,
+    faixa_grupo
+  ) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
+  ) |>
+  ggplot(
+    aes(
+      x = ano,
+      y = taxa,
+      color = faixa_grupo
+    )
+  ) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    x = "Ano",
+    y = "Taxa por 100 mil habitantes",
+    color = "Faixa Etária",
+    title = "Evolução da Taxa de Mortalidade por Grandes Grupos Etários"
+  ) +
+  theme_minimal()
+```
+
+### Tendência Geral
+
+```{r}
+base_Pancreas |>
+  group_by(ano) |>
+  summarise(
+    obitos = sum(n)
+  ) |>
+  ggplot(
+    aes(
+      ano,
+      obitos
+    )
+  ) +
+  geom_line(linewidth = 1.2) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    color = "red"
+  ) +
+  labs(
+    x = "Ano",
+    y = "Óbitos",
+    title = "Tendência Geral"
+  )
+```
+
+# Distribuição Geográfica
+
+## Coluna 1 {width="50%"}
+
+### Mortalidade por Estado
+
+```{r}
+dados_estados <- base_Pancreas |>
+  filter(
+    codigo >= 11,
+    codigo <= 53
+  ) |>
+  group_by(
+    codigo,
+    local
+  ) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    taxa = obitos / populacao * 100000
+  )
+
+dados_estados |>
+  slice_max(
+    taxa,
+    n = 15
+  ) |>
+  ggplot(
+    aes(
+      reorder(local, taxa),
+      taxa
+    )
+  ) +
+  geom_col(fill = "firebrick") +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "Taxa por 100 mil habitantes",
+    title = "Estados com Maiores Taxas"
+  ) +
+  theme_minimal()
+```
+
+### Distribuição das Taxas Estaduais
+
+```{r}
+base_Pancreas |>
+  filter(
+    nchar(as.character(codigo)) == 2
+  ) |>
+  group_by(local) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
+  ) |>
+  arrange(taxa) |>
+  slice_head(n = 10) |>
+  ggplot(
+    aes(
+      reorder(local, taxa),
+      taxa
+    )
+  ) +
+  geom_col(fill = "forestgreen") +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "Taxa por 100 mil habitantes",
+    title = "10 Estados com Menor Taxa de Mortalidade"
+  ) +
+  theme_minimal()
+```
+
+## Coluna 2 {width="50%"}
+
+### Mortalidade por Região
+
+```{r}
+dados_regioes <- base_Pancreas |>
+  filter(
+    codigo %in% c(1,2,3,4,5)
+  ) |>
+  group_by(local) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    .groups = "drop"
+  ) |>
+  mutate(
+    taxa = obitos / populacao * 100000
+  )
+
+ggplot(
+  dados_regioes,
+  aes(
+    reorder(local, taxa),
+    taxa
+  )
+) +
+  geom_col(fill = "darkgreen") +
+  coord_flip() +
+  labs(
+    x = "",
+    y = "Taxa por 100 mil habitantes",
+    title = "Taxa de Mortalidade por Região"
+  ) +
+  theme_minimal()
+```
+
+### Observações
+
+```{r}
+#| results: asis
+
+cat("
+### Interpretação
+
+- comparação entre estados brasileiros;
+- comparação entre grandes regiões do país;
+- identificação de áreas com maiores taxas de mortalidade;
+- suporte à discussão de desigualdades regionais.
+")
+```
+
+# Ranking dos Locais
+
+## Coluna 1
+
+### Top 30 por Óbitos
+
+```{r}
+base_Pancreas |>
+  group_by(local) |>
+  summarise(
+    obitos = sum(n)
+  ) |>
+  arrange(desc(obitos)) |>
+  slice(1:30)
+```
+
+## Coluna 2
+
+### Top 30 por Taxa
+
+```{r}
+base_Pancreas |>
+  group_by(local) |>
+  summarise(
+    taxa =
+      sum(n) /
+      sum(populacao) *
+      100000
+  ) |>
+  arrange(desc(taxa)) |>
+  slice(1:30)
+```
+
+# Conclusões
+
+## Principais Resultados
+
+```{r}
+#| results: asis
+
+cat("
+### Principais Achados
+
+- O câncer de pâncreas apresenta mortalidade relevante no Brasil.
+- As maiores frequências ocorrem em faixas etárias mais elevadas.
+- Existem diferenças entre sexos.
+- Foram observadas diferenças geográficas importantes.
+- A evolução temporal indica mudanças ao longo dos anos analisados.
+")
+```
+
+## Limitações
+
+```{r}
+#| results: asis
+
+cat("
+### Limitações
+
+- Dados agregados.
+- Ausência de informações clínicas individuais.
+- Possíveis diferenças de qualidade dos registros.
+- Não foram avaliados fatores de risco individuais.
+")
+```
+
+## Considerações Finais
+
+```{r}
+#| results: asis
+
+cat("
+O dashboard permite explorar padrões temporais, geográficos e demográficos da mortalidade por câncer de pâncreas, auxiliando na compreensão do comportamento da doença no Brasil.
+")
+```
