@@ -19,19 +19,58 @@ library(shiny)
 library(tidyverse)
 library(readxl)
 
+base_Nutricao <- read_excel("Nutricao.xlsx")
+
 base_Pancreas <- read_excel("MortalidadeCancer.xlsx") |>
   filter(Cancer == "Câncer de Pancreas") |>
   mutate(
     taxa_100k = (n / populacao) * 100000
   )
 
-total_obitos <- sum(base_Pancreas$n, na.rm = TRUE)
+total_obitos <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa == "todas as idades"
+  ) |>
+  summarise(
+    total = sum(n, na.rm = TRUE)
+  ) |>
+  pull(total)
 
-pop_total <- sum(base_Pancreas$populacao, na.rm = TRUE)
+pop_total <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa == "todas as idades"
+  ) |>
+  summarise(
+    total = max(populacao, na.rm = TRUE)
+  ) |>
+  pull(total)
 
-taxa_media <- mean(base_Pancreas$taxa_100k, na.rm = TRUE)
+taxa_media <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa == "todas as idades"
+  ) |>
+  summarise(
+    media = mean(taxa_100k, na.rm = TRUE)
+  ) |>
+  pull(media)
 
-n_locais <- n_distinct(base_Pancreas$local)
+n_locais <- base_Pancreas |>
+  filter(
+    codigo >= 11,
+    codigo <= 53,
+    sexo == "Ambos",
+    faixa == "todas as idades"
+  ) |>
+  summarise(
+    n = n_distinct(local)
+  ) |>
+  pull(n)
 
 
 ```
@@ -69,14 +108,15 @@ Os indicadores principais são:
 
 ```{r}
 base_Pancreas |>
-  group_by(ano) |>
-  summarise(
-    obitos = sum(n, na.rm = TRUE)
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa == "todas as idades"
   ) |>
   ggplot(
     aes(
-      ano,
-      obitos
+      x = ano,
+      y = n
     )
   ) +
   geom_line(linewidth = 1) +
@@ -85,7 +125,8 @@ base_Pancreas |>
     x = "Ano",
     y = "Óbitos",
     title = "Óbitos por Ano"
-  )
+  ) +
+  theme_minimal()
 ```
 
 ## Coluna 2 {width="55%"}
@@ -130,7 +171,7 @@ list(
 #| title: Locais Analisados
 
 list(
-  value = n_locais,
+  value = "27 Estados",
   icon = "geo-alt",
   color = "success"
 )
@@ -139,129 +180,143 @@ list(
 ### Taxa por Ano
 
 ```{r}
-base_Pancreas |>
-  group_by(ano) |>
-  summarise(
-    taxa =
-      sum(n, na.rm = TRUE) /
-      sum(populacao, na.rm = TRUE) *
-      100000
+dados_tendencia <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa == "todas as idades"
   ) |>
-  ggplot(
-    aes(
-      ano,
-      taxa
-    )
+  mutate(
+    taxa = n / populacao * 100000
+  ) |>
+  arrange(ano)
+
+rho <- cor(
+  dados_tendencia$ano,
+  dados_tendencia$taxa,
+  method = "spearman"
+)
+
+ggplot(
+  dados_tendencia,
+  aes(
+    x = ano,
+    y = taxa
+  )
+) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  geom_smooth(
+    method = "lm",
+    se = FALSE,
+    color = "red",
+    linewidth = 1
   ) +
-  geom_line(linewidth = 1) +
-  geom_point() +
+  annotate(
+    "text",
+    x = min(dados_tendencia$ano),
+    y = max(dados_tendencia$taxa),
+    hjust = 0,
+    label = paste0(
+      "ρ = ",
+      round(rho, 3)
+    ),
+    size = 5
+  ) +
   labs(
     x = "Ano",
-    y = "Taxa",
-    title = "Taxa de Mortalidade por 100 mil habitantes"
-  )
+    y = "Taxa por 100 mil habitantes",
+    title = "Evolução da Taxa Nacional de Mortalidade",
+    subtitle = "Brasil • Ambos os sexos • Todas as idades"
+  ) +
+  theme_minimal()
 ```
 
 # Sexo e Faixa Etária
 
-## Sidebar {.sidebar}
-
-```{r}
-selectInput(
-  "sexo",
-  "Sexo",
-  choices = unique(base_Pancreas$sexo),
-  selected = unique(base_Pancreas$sexo)[1]
-)
-
-sliderInput(
-  "ano",
-  "Ano",
-  min = min(base_Pancreas$ano),
-  max = max(base_Pancreas$ano),
-  value = max(base_Pancreas$ano),
-  step = 1,
-  sep = ""
-)
-```
-
-## Coluna 1
+## Coluna 1 {width="50%"}
 
 ### Mortalidade por Faixa Etária
 
 ```{r}
-plotOutput("graf_faixa")
+base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa != "todas as idades"
+  ) |>
+  group_by(faixa) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
+  ) |>
+  ggplot(
+    aes(
+      reorder(faixa, taxa),
+      taxa
+    )
+  ) +
+  geom_col(fill = "steelblue") +
+  coord_flip() +
+  labs(
+    x = "Faixa Etária",
+    y = "Taxa por 100 mil habitantes",
+    title = "Taxa de Mortalidade por Faixa Etária",
+    subtitle = "Brasil • Ambos os sexos"
+  ) +
+  theme_minimal()
 ```
 
-## Coluna 2
+## Coluna 2 {width="50%"}
 
-### Mortalidade por Local
+### Evolução da Taxa por Sexo
 
 ```{r}
-plotOutput("graf_local")
+base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo != "Ambos",
+    faixa == "todas as idades"
+  ) |>
+  mutate(
+    taxa = n / populacao * 100000
+  ) |>
+  ggplot(
+    aes(
+      x = ano,
+      y = taxa,
+      color = sexo
+    )
+  ) +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
+  labs(
+    x = "Ano",
+    y = "Taxa por 100 mil habitantes",
+    color = "Sexo",
+    title = "Evolução da Mortalidade por Sexo",
+    subtitle = "Brasil • Todas as idades"
+  ) +
+  theme_minimal()
 ```
+
+### Observações
 
 ```{r}
-#| context: server
+#| results: asis
 
-dados_filtrados <- reactive({
+cat("
+### Interpretação
 
-  base_Pancreas |>
-    filter(
-      sexo == input$sexo,
-      ano == input$ano
-    )
-
-})
-
-output$graf_faixa <- renderPlot({
-
-  dados_filtrados() |>
-    group_by(faixa) |>
-    summarise(
-      obitos = sum(n, na.rm = TRUE)
-    ) |>
-    ggplot(
-      aes(
-        reorder(faixa, obitos),
-        obitos
-      )
-    ) +
-    geom_col() +
-    coord_flip() +
-    labs(
-      x = "Faixa Etária",
-      y = "Óbitos"
-    )
-
-})
-
-output$graf_local <- renderPlot({
-
-  dados_filtrados() |>
-    group_by(local) |>
-    summarise(
-      obitos = sum(n, na.rm = TRUE)
-    ) |>
-    slice_max(
-      obitos,
-      n = 15
-    ) |>
-    ggplot(
-      aes(
-        reorder(local, obitos),
-        obitos
-      )
-    ) +
-    geom_col() +
-    coord_flip() +
-    labs(
-      x = "Local",
-      y = "Óbitos"
-    )
-
-})
+- comparação da mortalidade entre homens e mulheres;
+- identificação das faixas etárias mais afetadas;
+- análise da evolução temporal por sexo;
+- avaliação de possíveis diferenças de risco entre grupos populacionais.
+")
 ```
+
 
 
 # Perfil Demográfico
@@ -272,14 +327,22 @@ output$graf_local <- renderPlot({
 
 ```{r}
 base_Pancreas |>
+  filter(
+    codigo == 0,
+    faixa == "todas as idades",
+    sexo != "Ambos"
+  ) |>
   group_by(sexo) |>
   summarise(
-    obitos = sum(n, na.rm = TRUE)
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
   ) |>
   ggplot(
     aes(
-      reorder(sexo, obitos),
-      obitos,
+      reorder(sexo, taxa),
+      taxa,
       fill = sexo
     )
   ) +
@@ -287,32 +350,44 @@ base_Pancreas |>
   coord_flip() +
   labs(
     x = "",
-    y = "Óbitos",
-    title = "Óbitos por Sexo"
-  )
+    y = "Taxa por 100 mil habitantes",
+    title = "Taxa de Mortalidade por Sexo",
+    subtitle = "Brasil • Todas as idades"
+  ) +
+  theme_minimal()
 ```
 
 ### Distribuição dos Óbitos por Faixa Etária
 
 ```{r}
 base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos",
+    faixa != "todas as idades"
+  ) |>
   group_by(faixa) |>
   summarise(
-    obitos = sum(n, na.rm = TRUE)
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
   ) |>
   ggplot(
     aes(
-      reorder(faixa, obitos),
-      obitos
+      reorder(faixa, taxa),
+      taxa
     )
   ) +
   geom_col(fill = "steelblue") +
   coord_flip() +
   labs(
     x = "",
-    y = "Óbitos",
-    title = "Óbitos por Faixa Etária"
-  )
+    y = "Taxa por 100 mil habitantes",
+    title = "Taxa de Mortalidade por Faixa Etária",
+    subtitle = "Brasil • Ambos os sexos"
+  ) +
+  theme_minimal()
 ```
 
 ## Coluna 2 {width="50%"}
@@ -321,25 +396,37 @@ base_Pancreas |>
 
 ```{r}
 base_Pancreas |>
-  group_by(sexo, faixa) |>
+  filter(
+    codigo == 0,
+    sexo != "Ambos",
+    faixa != "todas as idades"
+  ) |>
+  group_by(
+    sexo,
+    faixa
+  ) |>
   summarise(
     obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
     .groups = "drop"
   ) |>
   ggplot(
     aes(
       faixa,
       sexo,
-      fill = obitos
+      fill = taxa
     )
   ) +
   geom_tile() +
   labs(
     x = "Faixa Etária",
     y = "Sexo",
-    fill = "Óbitos",
-    title = "Mapa de Calor"
+    fill = "Taxa\npor 100 mil",
+    title = "Mapa de Calor por Sexo e Faixa Etária",
+    subtitle = "Brasil"
   ) +
+  theme_minimal() +
   theme(
     axis.text.x =
       element_text(
@@ -376,59 +463,99 @@ Aspectos observados:
 
 ```{r}
 base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo != "Ambos"
+  ) |>
+  mutate(
+    faixa_grupo = case_when(
+
+      faixa %in% c(
+        "60-64 anos",
+        "65-69 anos",
+        "70-74 anos",
+        "75-79 anos"
+      ) ~ "Idosos 60-79",
+
+      faixa == "80-mais" ~
+        "Muito idosos 80+",
+
+      TRUE ~ NA_character_
+
+    )
+  ) |>
+  filter(
+    !is.na(faixa_grupo)
+  ) |>
   group_by(
     ano,
-    sexo
+    sexo,
+    faixa_grupo
   ) |>
   summarise(
-    obitos = sum(n),
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
     .groups = "drop"
   ) |>
   ggplot(
     aes(
-      ano,
-      obitos,
-      color = sexo
+      x = ano,
+      y = taxa,
+      color = sexo,
+      linetype = faixa_grupo
     )
   ) +
-  geom_line(linewidth = 1) +
-  geom_point() +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
   labs(
     x = "Ano",
-    y = "Óbitos",
-    title = "Evolução Temporal por Sexo"
-  )
+    y = "Taxa por 100 mil habitantes",
+    color = "Sexo",
+    linetype = "Faixa Etária",
+    title = "Evolução da Mortalidade em Idosos",
+    subtitle = "Brasil"
+  ) +
+  theme_minimal()
 ```
 
 ### Evolução da Taxa por Sexo
 
 ```{r}
 base_Pancreas |>
+  filter(
+    codigo %in% 1:5,
+    sexo == "Ambos",
+    faixa == "todas as idades"
+  ) |>
   group_by(
     ano,
-    sexo
+    local
   ) |>
   summarise(
     taxa =
-      sum(n) /
-      sum(populacao) *
+      sum(n, na.rm = TRUE) /
+      sum(populacao, na.rm = TRUE) *
       100000,
     .groups = "drop"
   ) |>
   ggplot(
     aes(
-      ano,
-      taxa,
-      color = sexo
+      x = ano,
+      y = taxa,
+      color = local
     )
   ) +
-  geom_line(linewidth = 1) +
-  geom_point() +
+  geom_line(linewidth = 1.2) +
+  geom_point(size = 2) +
   labs(
     x = "Ano",
-    y = "Taxa por 100 mil",
-    title = "Taxa de Mortalidade"
-  )
+    y = "Taxa por 100 mil habitantes",
+    color = "Região",
+    title = "Evolução da Mortalidade por Região",
+    subtitle = "Ambos os sexos • Todas as idades"
+  ) +
+  theme_minimal()
 ```
 
 ## Coluna 2 {width="50%"}
@@ -437,6 +564,10 @@ base_Pancreas |>
 
 ```{r}
 base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos"
+  ) |>
   mutate(
     faixa_grupo = case_when(
 
@@ -464,21 +595,13 @@ base_Pancreas |>
       ) ~
         "Adultos",
 
-      faixa %in% c(
-        "60-64 anos",
-        "65-69 anos",
-        "70-74 anos",
-        "75-79 anos"
-      ) ~
-        "Idosos",
-
-      faixa == "80-mais" ~
-        "Muito idosos",
-
       TRUE ~ NA_character_
+
     )
   ) |>
-  filter(!is.na(faixa_grupo)) |>
+  filter(
+    !is.na(faixa_grupo)
+  ) |>
   group_by(
     ano,
     faixa_grupo
@@ -501,8 +624,9 @@ base_Pancreas |>
   labs(
     x = "Ano",
     y = "Taxa por 100 mil habitantes",
-    color = "Faixa Etária",
-    title = "Evolução da Taxa de Mortalidade por Grandes Grupos Etários"
+    color = "Grupo Etário",
+    title = "Evolução da Mortalidade Antes da Terceira Idade",
+    subtitle = "Brasil • Ambos os sexos"
   ) +
   theme_minimal()
 ```
@@ -594,6 +718,214 @@ ggplot(
   ) +
   theme_minimal()
 ```
+
+
+# Inferência Estatística
+
+## Coluna 1
+
+### Todas as Idades
+
+```{r}
+dados_teste <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    faixa == "todas as idades",
+    sexo != "Ambos"
+  ) |>
+  mutate(
+    taxa = n / populacao * 100000
+  ) |>
+  select(
+    ano,
+    sexo,
+    taxa
+  ) |>
+  pivot_wider(
+    names_from = sexo,
+    values_from = taxa
+  )
+
+teste <- wilcox.test(
+  dados_teste$Masculino,
+  dados_teste$Feminino,
+  paired = TRUE,
+  alternative = "greater"
+)
+
+p_valor <- teste$p.value
+
+ggplot(
+  dados_teste,
+  aes(
+    Feminino,
+    Masculino
+  )
+) +
+  geom_point(size = 3) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = "red",
+    linetype = 2
+  ) +
+  labs(
+    x = "Taxa Feminina",
+    y = "Taxa Masculina",
+    title = "Homens vs Mulheres",
+    subtitle = paste0(
+      "Wilcoxon pareado | p = ",
+      signif(p_valor, 3)
+    )
+  ) +
+  theme_minimal()
+```
+
+### Resultado do Teste
+
+```{r}
+#| results: asis
+
+conclusao <- ifelse(
+  p_valor < 0.05,
+  "Há evidências estatísticas de que a taxa de mortalidade masculina é superior à feminina.",
+  "Não há evidências suficientes para concluir que a taxa de mortalidade masculina é superior à feminina."
+)
+
+cat(
+  paste0(
+    "### Hipóteses
+
+**H₀:** A taxa média de mortalidade masculina é igual à feminina.
+
+**H₁:** A taxa média de mortalidade masculina é maior que a feminina.
+
+**p-valor = ",
+    signif(p_valor, 4),
+    "**
+
+**Conclusão:** ",
+    conclusao
+  )
+)
+```
+
+---
+
+## Coluna 2
+
+### Idosos e Muito Idosos
+
+```{r}
+dados_idosos <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo != "Ambos"
+  ) |>
+  mutate(
+    grupo = case_when(
+
+      faixa %in% c(
+        "60-64 anos",
+        "65-69 anos",
+        "70-74 anos",
+        "75-79 anos"
+      ) ~ "Idosos",
+
+      faixa == "80-mais" ~
+        "Muito idosos",
+
+      TRUE ~ NA_character_
+
+    )
+  ) |>
+  filter(
+    !is.na(grupo)
+  ) |>
+  group_by(
+    ano,
+    sexo
+  ) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
+  ) |>
+  select(
+    ano,
+    sexo,
+    taxa
+  ) |>
+  pivot_wider(
+    names_from = sexo,
+    values_from = taxa
+  )
+
+teste_idosos <- wilcox.test(
+  dados_idosos$Masculino,
+  dados_idosos$Feminino,
+  paired = TRUE,
+  alternative = "greater"
+)
+
+p_idosos <- teste_idosos$p.value
+
+ggplot(
+  dados_idosos,
+  aes(
+    Feminino,
+    Masculino
+  )
+) +
+  geom_point(size = 3) +
+  geom_abline(
+    slope = 1,
+    intercept = 0,
+    color = "red",
+    linetype = 2
+  ) +
+  labs(
+    x = "Taxa Feminina",
+    y = "Taxa Masculina",
+    title = "Idosos e Muito Idosos",
+    subtitle = paste0(
+      "Wilcoxon pareado | p = ",
+      signif(p_idosos, 3)
+    )
+  ) +
+  theme_minimal()
+```
+
+### Resultado do Teste
+
+```{r}
+#| results: asis
+
+conclusao_idosos <- ifelse(
+  p_idosos < 0.05,
+  "Há evidências estatísticas de que a taxa de mortalidade masculina é superior à feminina entre idosos e muito idosos.",
+  "Não há evidências suficientes para concluir que a taxa de mortalidade masculina é superior à feminina entre idosos e muito idosos."
+)
+
+cat(
+  paste0(
+    "### Hipóteses
+
+**H₀:** A taxa média masculina é igual à feminina.
+
+**H₁:** A taxa média masculina é maior que a feminina.
+
+**p-valor = ",
+    signif(p_idosos, 4),
+    "**
+
+**Conclusão:** ",
+    conclusao_idosos
+  )
+)
+```
+
 
 # Distribuição Geográfica
 
@@ -724,38 +1056,234 @@ cat("
 ")
 ```
 
-# Ranking dos Locais
+# Fatores de Risco
 
 ## Coluna 1
 
-### Top 30 por Óbitos
+### Tabagismo por Sexo
 
 ```{r}
-base_Pancreas |>
-  group_by(local) |>
+base_Nutricao |>
+  group_by(Genero) |>
   summarise(
-    obitos = sum(n)
+    percentual =
+      mean(cigarro == "Sim", na.rm = TRUE) * 100,
+    .groups = "drop"
   ) |>
-  arrange(desc(obitos)) |>
-  slice(1:30)
+  ggplot(
+    aes(
+      Genero,
+      percentual,
+      fill = Genero
+    )
+  ) +
+  geom_col() +
+  scale_fill_manual(
+    values = c(
+      "Masculino" = "steelblue",
+      "Feminino" = "deeppink"
+    )
+  ) +
+  labs(
+    x = "",
+    y = "%",
+    title = "Tabagismo por Sexo"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none"
+  )
+```
+
+### Consumo de Álcool por Sexo
+
+```{r}
+base_Nutricao |>
+
+  group_by(Genero) |>
+
+  summarise(
+
+    percentual =
+      mean(Bebidas_Alcoolicas != "Não consumo", na.rm = TRUE) * 100,
+
+    .groups = "drop"
+
+  ) |>
+
+  ggplot(
+
+    aes(
+      Genero,
+      percentual,
+      fill = Genero
+    )
+
+  ) +
+
+  geom_col() +
+
+  scale_fill_manual(
+
+    values = c(
+      "Masculino" = "steelblue",
+      "Feminino" = "deeppink"
+    )
+
+  ) +
+
+  labs(
+    x = "",
+    y = "%",
+    title = "Consumo de Álcool por Sexo"
+  ) +
+
+  theme_minimal() +
+
+  theme(
+    legend.position = "none"
+  )
 ```
 
 ## Coluna 2
 
-### Top 30 por Taxa
+### Consumo de Embutidos por Sexo
 
 ```{r}
-base_Pancreas |>
-  group_by(local) |>
+base_Nutricao |>
+
+  group_by(Genero) |>
+
   summarise(
-    taxa =
-      sum(n) /
-      sum(populacao) *
-      100000
+
+    percentual =
+      mean(Embutidos != "Não consumo", na.rm = TRUE) * 100,
+
+    .groups = "drop"
+
   ) |>
-  arrange(desc(taxa)) |>
-  slice(1:30)
+
+  ggplot(
+
+    aes(
+      Genero,
+      percentual,
+      fill = Genero
+    )
+
+  ) +
+
+  geom_col() +
+
+  scale_fill_manual(
+
+    values = c(
+      "Masculino" = "steelblue",
+      "Feminino" = "deeppink"
+    )
+
+  ) +
+
+  labs(
+    x = "",
+    y = "%",
+    title = "Consumo de Embutidos por Sexo"
+  ) +
+
+  theme_minimal() +
+
+  theme(
+    legend.position = "none"
+  )
 ```
+
+### Fatores de Risco por Faixa Etária
+
+```{r}
+base_Nutricao |>
+
+  mutate(
+
+    faixa_grupo = case_when(
+
+      Idade <= 4 ~ "Primeira infância",
+
+      Idade <= 14 ~ "Crianças",
+
+      Idade <= 19 ~ "Adolescentes e jovens",
+
+      Idade <= 59 ~ "Adultos",
+
+      Idade <= 79 ~ "Idosos",
+
+      TRUE ~ "Muito idosos"
+    ),
+
+    fumante =
+      if_else(
+        cigarro == "Sim",
+        1,
+        0
+      )
+
+  ) |>
+
+  group_by(
+    faixa_grupo,
+    Genero
+  ) |>
+
+  summarise(
+
+    percentual =
+      mean(fumante, na.rm = TRUE) * 100,
+
+    .groups = "drop"
+
+  ) |>
+
+  ggplot(
+
+    aes(
+      faixa_grupo,
+      percentual,
+      color = Genero,
+      group = Genero
+    )
+
+  ) +
+
+  geom_line(linewidth = 1.2) +
+
+  geom_point(size = 3) +
+
+  scale_color_manual(
+
+    values = c(
+      "Masculino" = "steelblue",
+      "Feminino" = "deeppink"
+    )
+
+  ) +
+
+  labs(
+    x = "",
+    y = "% Fumantes",
+    color = "Sexo",
+    title = "Tabagismo por Faixa Etária"
+  ) +
+
+  theme_minimal() +
+
+  theme(
+    axis.text.x =
+      element_text(
+        angle = 25,
+        hjust = 1
+      )
+  )
+```
+
 
 # Conclusões
 
