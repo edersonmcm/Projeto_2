@@ -510,28 +510,89 @@ base_Pancreas |>
 ### Tendência Geral
 
 ```{r}
-base_Pancreas |>
-  group_by(ano) |>
-  summarise(
-    obitos = sum(n)
+# Converter faixas etárias para idade média aproximada
+dados_idade <- base_Pancreas |>
+  filter(
+    codigo == 0,
+    sexo == "Ambos"
   ) |>
-  ggplot(
-    aes(
-      ano,
-      obitos
+  mutate(
+    idade_media = case_when(
+      faixa == "0-4 anos"   ~ 2,
+      faixa == "5-9 anos"   ~ 7,
+      faixa == "10-14 anos" ~ 12,
+      faixa == "15-19 anos" ~ 17,
+      faixa == "20-24 anos" ~ 22,
+      faixa == "25-29 anos" ~ 27,
+      faixa == "30-34 anos" ~ 32,
+      faixa == "35-39 anos" ~ 37,
+      faixa == "40-44 anos" ~ 42,
+      faixa == "45-49 anos" ~ 47,
+      faixa == "50-54 anos" ~ 52,
+      faixa == "55-59 anos" ~ 57,
+      faixa == "60-64 anos" ~ 62,
+      faixa == "65-69 anos" ~ 67,
+      faixa == "70-74 anos" ~ 72,
+      faixa == "75-79 anos" ~ 77,
+      faixa == "80-mais"    ~ 85,
+      TRUE ~ NA_real_
     )
+  ) |>
+  filter(!is.na(idade_media)) |>
+  group_by(idade_media) |>
+  summarise(
+    obitos = sum(n, na.rm = TRUE),
+    populacao = sum(populacao, na.rm = TRUE),
+    taxa = obitos / populacao * 100000,
+    .groups = "drop"
+  )
+
+# Correlação de Spearman
+teste_spearman <- cor.test(
+  dados_idade$idade_media,
+  dados_idade$taxa,
+  method = "spearman"
+)
+
+rho <- unname(teste_spearman$estimate)
+pvalor <- teste_spearman$p.value
+
+ggplot(
+  dados_idade,
+  aes(
+    x = idade_media,
+    y = taxa
+  )
+) +
+  geom_point(
+    size = 3,
+    color = "steelblue"
   ) +
-  geom_line(linewidth = 1.2) +
   geom_smooth(
-    method = "lm",
-    se = FALSE,
-    color = "red"
+    method = "loess",
+    se = TRUE,
+    color = "firebrick",
+    linewidth = 1.2
+  ) +
+  annotate(
+    "text",
+    x = 25,
+    y = max(dados_idade$taxa) * 0.95,
+    label = paste0(
+      "ρ = ",
+      round(rho, 3),
+      "\np = ",
+      signif(pvalor, 3)
+    ),
+    size = 5
   ) +
   labs(
-    x = "Ano",
-    y = "Óbitos",
-    title = "Tendência Geral"
-  )
+    title = "Idade e Taxa de Mortalidade por Câncer de Pâncreas",
+    subtitle = "Brasil (código 0) - Ambos os sexos",
+    x = "Idade média da faixa etária",
+    y = "Taxa por 100 mil habitantes"
+  ) +
+  theme_minimal()
 ```
 
 # Distribuição Geográfica
